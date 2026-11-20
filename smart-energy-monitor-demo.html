@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Energy Monitor — Live Demo</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --bg:#12161a;
+  --panel:#1a2027;
+  --panel-2:#1f262d;
+  --line:#2a3239;
+  --copper:#c9884f;
+  --copper-dim:#8a6640;
+  --cyan:#5cc9c0;
+  --alert:#e2543a;
+  --alert-dim:#5a2b24;
+  --text:#ece8e1;
+  --dim:#8b94a0;
+  --dim-2:#5c6570;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'IBM Plex Sans',sans-serif;
+  padding:28px 20px 60px;
+  min-height:100vh;
+}
+.wrap{max-width:980px;margin:0 auto;}
+
+/* header */
+header{
+  display:flex;justify-content:space-between;align-items:flex-end;
+  border-bottom:1px solid var(--line);
+  padding-bottom:16px;margin-bottom:18px;
+  flex-wrap:wrap;gap:10px;
+}
+h1{font-size:20px;font-weight:600;margin:0 0 4px;letter-spacing:0.2px;}
+.sub{color:var(--dim);font-size:13px;font-family:'IBM Plex Mono',monospace;}
+.status{
+  display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;
+  font-size:12px;color:var(--dim);
+}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan);}
+
+/* alert banner */
+#alertBanner{
+  display:none;
+  background:var(--alert-dim);
+  border:1px solid var(--alert);
+  color:#ffd9d0;
+  padding:12px 16px;border-radius:4px;
+  font-family:'IBM Plex Mono',monospace;font-size:13px;
+  margin-bottom:16px;
+  align-items:center;gap:10px;
+}
+#alertBanner.show{display:flex;}
+#alertBanner .pip{width:8px;height:8px;border-radius:50%;background:var(--alert);flex:none;
+  animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
+
+/* stat cards */
+.stats{
+  display:grid;grid-template-columns:repeat(5,1fr);gap:1px;
+  background:var(--line);border:1px solid var(--line);
+  margin-bottom:16px;
+}
+.stat{background:var(--panel);padding:14px 12px;}
+.stat .label{font-size:11px;color:var(--dim);margin-bottom:6px;}
+.stat .val{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:500;}
+.stat .unit{font-size:12px;color:var(--dim-2);margin-left:2px;}
+.stat.flagged .val{color:var(--alert);}
+
+/* main grid */
+.grid{display:grid;grid-template-columns:1.5fr 1fr;gap:16px;margin-bottom:16px;}
+@media (max-width:760px){.grid{grid-template-columns:1fr;} .stats{grid-template-columns:repeat(2,1fr);}}
+
+.panel{background:var(--panel);border:1px solid var(--line);padding:16px;}
+.panel h2{font-size:13px;font-weight:500;color:var(--dim);margin:0 0 12px;
+  text-transform:none;}
+
+/* chart */
+#chartSvg{width:100%;height:200px;display:block;}
+.chart-legend{display:flex;gap:18px;margin-top:8px;font-size:11px;color:var(--dim);font-family:'IBM Plex Mono',monospace;}
+.chart-legend span{display:inline-flex;align-items:center;gap:5px;}
+.swatch{width:10px;height:2px;display:inline-block;}
+
+/* log */
+#log{font-family:'IBM Plex Mono',monospace;font-size:12px;max-height:220px;overflow-y:auto;}
+.row{display:grid;grid-template-columns:52px 52px 44px 52px 1fr;gap:8px;padding:5px 0;
+  border-bottom:1px solid var(--line);color:var(--dim);align-items:center;}
+.row.suspicious{color:#f0c98a;}
+.row.confirmed{color:var(--alert);}
+.row .flagtext{text-align:right;}
+
+/* controls */
+.controls{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+button{
+  background:var(--panel-2);color:var(--text);border:1px solid var(--line);
+  padding:9px 14px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;
+  cursor:pointer;border-radius:3px;
+}
+button:hover{border-color:var(--copper);}
+button.primary{border-color:var(--copper);color:#f0d3ae;}
+button.danger:hover{border-color:var(--alert);color:#ffd9d0;}
+button:disabled{opacity:0.4;cursor:not-allowed;}
+
+/* architecture strip */
+.flow{display:flex;align-items:center;gap:0;overflow-x:auto;padding:6px 0;}
+.node{
+  flex:none;background:var(--panel-2);border:1px solid var(--line);padding:10px 14px;
+  font-size:12px;color:var(--dim);border-radius:3px;white-space:nowrap;
+}
+.node.active{border-color:var(--cyan);color:var(--cyan);}
+.arrow{flex:none;width:28px;text-align:center;color:var(--dim-2);}
+
+footer{margin-top:24px;font-size:11px;color:var(--dim-2);line-height:1.6;}
+footer a{color:var(--dim);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>Smart Energy &amp; Current Monitor</h1>
+      <div class="sub">NODE-04 · LED circuit + refrigerator + space heater</div>
+    </div>
+    <div class="status"><span class="dot"></span><span id="statusText">connected · sampling every 1.2s (sped up for demo)</span></div>
+  </header>
+
+  <div id="alertBanner"><span class="pip"></span><span id="alertText"></span></div>
+
+  <div class="stats">
+    <div class="stat" id="statV"><div class="label">Voltage</div><div class="val"><span id="vVal">231.0</span><span class="unit">V</span></div></div>
+    <div class="stat" id="statA"><div class="label">Current</div><div class="val"><span id="aVal">1.80</span><span class="unit">A</span></div></div>
+    <div class="stat" id="statW"><div class="label">Power</div><div class="val"><span id="wVal">415</span><span class="unit">W</span></div></div>
+    <div class="stat" id="statPF"><div class="label">Power factor</div><div class="val"><span id="pfVal">0.95</span></div></div>
+    <div class="stat" id="statE"><div class="label">Energy today</div><div class="val"><span id="eVal">0.00</span><span class="unit">kWh</span></div></div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>Current draw, last 40 readings</h2>
+      <svg id="chartSvg" viewBox="0 0 600 200" preserveAspectRatio="none"></svg>
+      <div class="chart-legend">
+        <span><span class="swatch" style="background:var(--cyan)"></span>current (A)</span>
+        <span><span class="swatch" style="background:var(--copper-dim)"></span>±3σ baseline band</span>
+        <span><span class="swatch" style="background:var(--alert)"></span>confirmed anomaly</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Reading log</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="btnFault">Inject sustained fault</button>
+    <button id="btnBlip">Inject single-reading blip</button>
+    <button class="danger" id="btnReset">Reset baseline</button>
+  </div>
+
+  <div class="panel">
+    <h2>Data flow</h2>
+    <div class="flow" id="flow">
+      <div class="node" data-n="0">Voltage &amp; current sensors</div><div class="arrow">→</div>
+      <div class="node" data-n="1">ESP32 · RMS &amp; power calc</div><div class="arrow">→</div>
+      <div class="node" data-n="2">Wi-Fi upload (JSON)</div><div class="arrow">→</div>
+      <div class="node" data-n="3">Firebase + MQTT</div><div class="arrow">→</div>
+      <div class="node" data-n="4">Anomaly check (z-score, 2-reading confirm)</div><div class="arrow">→</div>
+      <div class="node" data-n="5">Dashboard &amp; phone alert</div>
+    </div>
+  </div>
+
+  <footer>
+    Simulated demo based on "Smart Energy and Current Monitoring with Anomaly Detection Using IoT."
+    Readings are synthetic. The detector flags a reading when it is more than three standard deviations
+    from the rolling baseline for the current hour, and only raises an alert once that happens on two
+    consecutive readings — this is what filters out a harmless single-reading blip (e.g. a compressor
+    starting) while still catching a real, sustained fault.
+  </footer>
+
+</div>
+
+<script>
+// ---- state ----
+const baseline = { vMean: 230.5, vStd: 1.2, aMean: 1.8, aStd: 0.15 };
+let history = []; // {t, v, a, w, pf, flag}
+let consecutiveSuspicious = 0;
+let sampleN = 0;
+let energyWh = 0;
+let injectedFaultTicks = 0; // counts down while a sustained fault is active
+let flowStep = -1;
+
+const vVal = document.getElementById('vVal');
+const aVal = document.getElementById('aVal');
+const wVal = document.getElementById('wVal');
+const pfVal = document.getElementById('pfVal');
+const eVal = document.getElementById('eVal');
+const logEl = document.getElementById('log');
+const alertBanner = document.getElementById('alertBanner');
+const alertText = document.getElementById('alertText');
+const chartSvg = document.getElementById('chartSvg');
+const statV = document.getElementById('statV');
+const statA = document.getElementById('statA');
+const statW = document.getElementById('statW');
+
+function randn(){ // approx normal noise
+  let u=0,v=0;
+  while(u===0)u=Math.random();
+  while(v===0)v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+
+function nextReading(){
+  let v = baseline.vMean + randn()*baseline.vStd;
+  let a = baseline.aMean + randn()*baseline.aStd;
+  let pf = 0.95 + randn()*0.01;
+
+  if(injectedFaultTicks > 0){
+    // sustained fault: current spike + voltage sag, lasts several ticks
+    a = baseline.aMean + 3.1 + randn()*0.2;
+    v = baseline.vMean - 9 + randn()*1.0;
+    pf = 0.80 + randn()*0.02;
+    injectedFaultTicks--;
+  }
+
+  pf = Math.min(0.99, Math.max(0.6, pf));
+  const w = v * a * pf;
+  return {v, a, w, pf};
+}
+
+function zscoreFlag(a){
+  const z = Math.abs(a - baseline.aMean) / baseline.aStd;
+  return z > 3;
+}
+
+function updateBaselineSlowly(a){
+  // only let genuinely normal readings drift the baseline (avoid faults poisoning it)
+  baseline.aMean = baseline.aMean * 0.98 + a * 0.02;
+}
+
+function fmtTime(){
+  const d = new Date();
+  return d.toTimeString().slice(0,8);
+}
+
+function pushLogRow(t, r, flagClass, flagLabel){
+  const row = document.createElement('div');
+  row.className = 'row ' + flagClass;
+  row.innerHTML = `<span>${t}</span><span>${r.v.toFixed(1)}V</span><span>${r.a.toFixed(1)}A</span><span>${Math.round(r.w)}W</span><span class="flagtext">${flagLabel}</span>`;
+  logEl.prepend(row);
+  while(logEl.children.length > 10) logEl.removeChild(logEl.lastChild);
+}
+
+function setAlert(msg){
+  alertText.textContent = msg;
+  alertBanner.classList.add('show');
+}
+function clearAlert(){
+  alertBanner.classList.remove('show');
+}
+
+function flashStat(el, on){
+  el.classList.toggle('flagged', on);
+}
+
+function stepFlow(){
+  document.querySelectorAll('#flow .node').forEach(n=>n.classList.remove('active'));
+  flowStep = (flowStep + 1) % 6;
+  const n = document.querySelector(`#flow .node[data-n="${flowStep}"]`);
+  if(n) n.classList.add('active');
+}
+
+function drawChart(){
+  const w = 600, h = 200, pad = 6;
+  const points = history.slice(-40);
+  if(points.length < 2){ chartSvg.innerHTML=''; return; }
+
+  const maxA = Math.max(...points.map(p=>p.a), baseline.aMean + 4*baseline.aStd);
+  const minA = 0;
+  const xStep = (w - pad*2) / (40 - 1);
+  const startIdx = 40 - points.length;
+
+  function xy(i, val){
+    const x = pad + (startIdx + i) * xStep;
+    const y = h - pad - ((val - minA) / (maxA - minA)) * (h - pad*2);
+    return [x,y];
+  }
+
+  // baseline band
+  const bandTop = baseline.aMean + 3*baseline.aStd;
+  const bandBot = Math.max(0, baseline.aMean - 3*baseline.aStd);
+  const [,yTop] = xy(0, bandTop);
+  const [,yBot] = xy(0, bandBot);
+
+  let svg = `<rect x="0" y="${yTop}" width="${w}" height="${Math.max(0,yBot-yTop)}" fill="var(--copper-dim)" opacity="0.18"></rect>`;
+
+  let path = '';
+  points.forEach((p,i)=>{
+    const [x,y] = xy(i, p.a);
+    path += (i===0? 'M':'L') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+  });
+  svg += `<path d="${path}" fill="none" stroke="var(--cyan)" stroke-width="1.6"></path>`;
+
+  points.forEach((p,i)=>{
+    if(p.flag === 'confirmed'){
+      const [x,y] = xy(i,p.a);
+      svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="var(--alert)"></circle>`;
+    }
+  });
+
+  chartSvg.innerHTML = svg;
+}
+
+function tick(){
+  const r = nextReading();
+  sampleN++;
+  energyWh += r.w * (1.2/3600); // ~1.2s interval scaled to Wh
+
+  stepFlow();
+
+  const suspicious = zscoreFlag(r.a);
+  let flag = 'normal', flagClass='', flagLabel='Normal';
+
+  if(suspicious){
+    consecutiveSuspicious++;
+    if(consecutiveSuspicious >= 2){
+      flag = 'confirmed';
+      flagClass = 'confirmed';
+      flagLabel = r.a > baseline.aMean ? 'Confirmed · spike' : 'Confirmed · sag';
+      setAlert(`Confirmed anomaly at ${fmtTime()} — current ${r.a.toFixed(1)}A vs baseline ${baseline.aMean.toFixed(2)}A ± ${(baseline.aStd).toFixed(2)}A (3σ). Two consecutive out-of-range readings.`);
+    } else {
+      flag = 'suspicious';
+      flagClass = 'suspicious';
+      flagLabel = 'Suspicious (1/2)';
+    }
+  } else {
+    consecutiveSuspicious = 0;
+    updateBaselineSlowly(r.a);
+    if(alertBanner.classList.contains('show')) clearAlert();
+  }
+
+  r.flag = flag;
+  history.push(r);
+  if(history.length > 60) history.shift();
+
+  vVal.textContent = r.v.toFixed(1);
+  aVal.textContent = r.a.toFixed(2);
+  wVal.textContent = Math.round(r.w);
+  pfVal.textContent = r.pf.toFixed(2);
+  eVal.textContent = (energyWh/1000).toFixed(3);
+
+  flashStat(statV, flag==='confirmed' && r.v < baseline.vMean - 5);
+  flashStat(statA, flag==='confirmed');
+  flashStat(statW, flag==='confirmed');
+
+  pushLogRow(fmtTime(), r, flagClass, flagLabel);
+  drawChart();
+}
+
+document.getElementById('btnFault').addEventListener('click', ()=>{
+  injectedFaultTicks = 5; // several ticks so it's confirmed, matching "sustained fault"
+});
+document.getElementById('btnBlip').addEventListener('click', ()=>{
+  injectedFaultTicks = 1; // single reading only — should be filtered out
+});
+document.getElementById('btnReset').addEventListener('click', ()=>{
+  baseline.aMean = 1.8; baseline.aStd = 0.15;
+  baseline.vMean = 230.5; baseline.vStd = 1.2;
+  consecutiveSuspicious = 0;
+  history = [];
+  energyWh = 0;
+  clearAlert();
+  logEl.innerHTML = '';
+});
+
+setInterval(tick, 1200);
+tick();
+</script>
+</body>
+</html>
